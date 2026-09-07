@@ -96,26 +96,54 @@ export function EVMProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts: string[]) => {
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-          const _provider = new BrowserProvider(window.ethereum);
-          setProvider(_provider);
-          _provider.getSigner().then(setSigner);
-        } else {
-          disconnect();
+    const initConnection = async () => {
+      if (window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts && accounts.length > 0) {
+            setAccount(accounts[0]);
+            const _provider = new BrowserProvider(window.ethereum);
+            setProvider(_provider);
+            const _signer = await _provider.getSigner();
+            setSigner(_signer);
+            // Optionally check network again on load, or let chainChanged handle it
+            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+            if (chainId !== BOTCHAIN_CHAIN_ID) {
+               // We might just show a warning or let them switch manually, but for now we can just rely on the component using it.
+            }
+          }
+        } catch (error) {
+          console.error("Failed to get connected accounts", error);
         }
-      });
+      }
+    };
 
-      window.ethereum.on('chainChanged', () => {
-        window.location.reload();
-      });
+    initConnection();
+
+    const handleAccountsChanged = (accounts: string[]) => {
+      if (accounts.length > 0) {
+        setAccount(accounts[0]);
+        const _provider = new BrowserProvider(window.ethereum);
+        setProvider(_provider);
+        _provider.getSigner().then(setSigner);
+      } else {
+        disconnect();
+      }
+    };
+
+    const handleChainChanged = () => {
+      window.location.reload();
+    };
+
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
     }
+    
     return () => {
       if (window.ethereum?.removeListener) {
-        window.ethereum.removeListener('accountsChanged', () => {});
-        window.ethereum.removeListener('chainChanged', () => {});
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
       }
     }
   }, []);
